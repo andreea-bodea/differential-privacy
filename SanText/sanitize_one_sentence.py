@@ -6,7 +6,7 @@ import unicodedata
 import os
 import pickle
 # Import core logic from SanText.py
-from SanText import cal_probability, SanText, SanText_plus, SanText_init, SanText_plus_init
+from .SanText import cal_probability, SanText, SanText_plus, SanText_init, SanText_plus_init
 from tabulate import tabulate
 import time
 
@@ -44,9 +44,9 @@ def get_vocab_SST2_cached(data_dir, tokenizer, tokenizer_type="word", cache_path
 
 class SanTextBatchProcessor:
     def __init__(self,
-                 glove_path="data/glove.840B.300d.txt",
-                 filtered_glove_path="data/glove.filtered.txt",
-                 data_dir="data/SST-2/",
+                 glove_path="SanText/data/glove.840B.300d.txt",
+                 filtered_glove_path="SanText/data/glove.filtered.txt",
+                 data_dir="SanText/data/SST-2/",
                  epsilon=15.0,
                  p=0.2,
                  sensitive_word_percentage=0.5,
