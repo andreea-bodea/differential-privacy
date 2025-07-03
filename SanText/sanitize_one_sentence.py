@@ -147,20 +147,41 @@ if __name__ == "__main__":
     for method in ["SanText", "SanText+"]:
         print(f"\nMethod: {method} (Serial Processing)")
         start_time = time.time()
-        results = [processor.sanitize(sent, method=method) for sent in example_sentences]
+        if method == "SanText":
+            # Example: per-word epsilons for each sentence
+            epsilons_list = [
+                [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],  # for first sentence
+                [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],         # for second sentence
+                [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]     # for third sentence
+            ]
+            results = [processor.sanitize(sent, method=method, epsilons=eps) for sent, eps in zip(example_sentences, epsilons_list)]
+        else:
+            results = [processor.sanitize(sent, method=method) for sent in example_sentences]
         elapsed = time.time() - start_time
         for sent, sanitized in zip(example_sentences, results):
             print(f"Original: {sent}")
             print(f"Sanitized: {sanitized}\n")
         print(f"Total time for {len(example_sentences)} sentences (serial): {elapsed:.6f} seconds\n")
 
-    # Parallel processing example
+    # Parallel processing example with per-word epsilons for SanText
     import concurrent.futures
     for method in ["SanText", "SanText+"]:
         print(f"\nMethod: {method} (Parallel Processing)")
         start_time = time.time()
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            results = list(executor.map(lambda sent: processor.sanitize(sent, method=method), example_sentences))
+        if method == "SanText":
+            epsilons_list = [
+                [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+                [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+                [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]
+            ]
+            def sanitize_with_eps(args):
+                sentence, epsilons = args
+                return processor.sanitize(sentence, method="SanText", epsilons=epsilons)
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                results = list(executor.map(sanitize_with_eps, zip(example_sentences, epsilons_list)))
+        else:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                results = list(executor.map(lambda sent: processor.sanitize(sent, method=method), example_sentences))
         elapsed = time.time() - start_time
         for sent, sanitized in zip(example_sentences, results):
             print(f"Original: {sent}")

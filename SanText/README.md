@@ -31,41 +31,47 @@ To test different sentences, edit the `example_sentences` variable in `sanitize_
 
 ## Efficient Batch Sentence Sanitization
 
-If you want to sanitize many sentences (e.g., a whole dataset), use the `SanTextBatchProcessor` class in `sanitize_one_sentence.py`. This class loads all resources (vocab, embeddings, caches, etc.) only once and can efficiently process sentences in both serial and parallel modes.
+The `SanTextBatchProcessor` class supports efficient batch sanitization of sentences using either the SanText or SanText+ mechanisms. You can also use **per-word epsilons** for SanText in both serial and parallel processing.
 
-### Example Usage: Serial and Parallel Processing
+### Example Usage: Serial and Parallel Processing with Per-Word Epsilons
 
 ```python
 from sanitize_one_sentence import SanTextBatchProcessor
+import concurrent.futures
 
-sentences = [
+example_sentences = [
     "The movie was absolutely wonderful and inspiring.",
     "I did not enjoy the film at all.",
     "The plot was predictable but the acting was great."
 ]
+# Per-word epsilons for each sentence (must match number of tokens or be shorter)
+epsilons_list = [
+    [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],  # for first sentence
+    [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],         # for second sentence
+    [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]     # for third sentence
+]
 
 processor = SanTextBatchProcessor()
 
-# Serial processing
-results_serial = [processor.sanitize(sent, method="SanText") for sent in sentences]
+# Serial processing with per-word epsilons
+results = [processor.sanitize(sent, method="SanText", epsilons=eps) for sent, eps in zip(example_sentences, epsilons_list)]
+for sent, sanitized in zip(example_sentences, results):
+    print(f"Original: {sent}")
+    print(f"Sanitized: {sanitized}\n")
 
-# Parallel processing
-import concurrent.futures
+# Parallel processing with per-word epsilons
+def sanitize_with_eps(args):
+    sentence, epsilons = args
+    return processor.sanitize(sentence, method="SanText", epsilons=epsilons)
 with concurrent.futures.ThreadPoolExecutor() as executor:
-    results_parallel = list(executor.map(lambda sent: processor.sanitize(sent, method="SanText"), sentences))
-
-for sent, sanitized in zip(sentences, results_serial):
+    results = list(executor.map(sanitize_with_eps, zip(example_sentences, epsilons_list)))
+for sent, sanitized in zip(example_sentences, results):
     print(f"Original: {sent}")
-    print(f"Sanitized (serial): {sanitized}\n")
-
-for sent, sanitized in zip(sentences, results_parallel):
-    print(f"Original: {sent}")
-    print(f"Sanitized (parallel): {sanitized}\n")
+    print(f"Sanitized: {sanitized}\n")
 ```
 
-- You can use `method="SanText+"` for the SanText+ mechanism.
-- This approach is much faster than calling the single-sentence function repeatedly.
-- For very large datasets, you can further optimize by chunking or using more threads.
+- For SanText+, just omit the `epsilons` argument.
+- See the section below for more details on per-word epsilon usage.
 
 ## Using the `SanTextBatchProcessor` Programmatically
 
