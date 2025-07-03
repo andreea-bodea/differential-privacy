@@ -165,6 +165,7 @@ if __name__ == "__main__":
 
     # Parallel processing example with per-word epsilons for SanText
     import concurrent.futures
+    import multiprocessing
     for method in ["SanText", "SanText+"]:
         print(f"\nMethod: {method} (Parallel Processing)")
         start_time = time.time()
@@ -174,13 +175,14 @@ if __name__ == "__main__":
                 [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
                 [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]
             ]
-            def sanitize_with_eps(args):
+            def sanitize_with_eps_mp(args):
                 sentence, epsilons = args
-                return processor.sanitize(sentence, method="SanText", epsilons=epsilons)
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                results = list(executor.map(sanitize_with_eps, zip(example_sentences, epsilons_list)))
+                proc = SanTextBatchProcessor()  # Each process gets its own instance
+                return proc.sanitize(sentence, method="SanText", epsilons=epsilons)
+            with multiprocessing.Pool(processes=4) as pool:
+                results = pool.map(sanitize_with_eps_mp, zip(example_sentences, epsilons_list))
         else:
-            with concurrent.futures.ThreadPoolExecutor() as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
                 results = list(executor.map(lambda sent: processor.sanitize(sent, method=method), example_sentences))
         elapsed = time.time() - start_time
         for sent, sanitized in zip(example_sentences, results):
