@@ -1,0 +1,14 @@
+centroids/
+embeddings/
+env/
+inter/
+intra/
+echr_dev.json
+__pycache__/
+.DS_Store
+src/requests.jsonl
+src/requests_output.jsonl
+src/requests_custext.jsonl
+anonymized_texts_custext.csv
+anonymized_texts.csv
+results.csv

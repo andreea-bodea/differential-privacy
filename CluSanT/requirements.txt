@@ -1,0 +1,12 @@
+transformers
+torch
+pandas
+numpy
+tqdm
+spacy
+scikit-learn
+scipy
+nltk
+sentence-transformers
+ray
+tabulate
