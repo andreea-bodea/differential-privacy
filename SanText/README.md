@@ -106,6 +106,34 @@ print("SanText output:", sanitized)
 
 **For best performance on datasets, always use the batch processor class and parallelization as shown above.**
 
+## Using Per-Word Epsilon in SanText
+
+The `SanTextBatchProcessor` class supports specifying a different epsilon value for each word in a sentence when using the `SanText` method. This allows you to control the privacy level for each word individually.
+
+### How to Use
+- Pass a list of epsilon values to the `epsilons` argument of the `sanitize` method.
+- The list should have as many elements as the number of tokens in the sentence (after tokenization).
+- If the list is **shorter** than the number of tokens, the default epsilon (set in the processor) will be used for the remaining tokens.
+
+### Example
+```python
+from sanitize_one_sentence import SanTextBatchProcessor
+
+processor = SanTextBatchProcessor()
+sentence = "The movie was absolutely wonderful and inspiring."
+per_word_epsilons = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]  # One epsilon per token
+sanitized = processor.sanitize(sentence, method="SanText", epsilons=per_word_epsilons)
+print("Sanitized:", sanitized)
+
+# If you provide fewer epsilons than tokens:
+short_epsilons = [1.0, 2.0, 3.0]  # Only for the first 3 tokens
+sanitized = processor.sanitize(sentence, method="SanText", epsilons=short_epsilons)
+# The first 3 tokens use your values, the rest use the default epsilon
+print("Sanitized with short epsilon list:", sanitized)
+```
+
+**Note:** Per-word epsilon is only supported for the `SanText` method, not for `SanText+`.
+
 --------------------------------------------------------------------------------------------
 # SanText
 Code for Findings of ACL-IJCNLP 2021 **"[Differential Privacy for Text Analytics via Natural Text Sanitization](https://arxiv.org/pdf/2106.01221.pdf)"**
