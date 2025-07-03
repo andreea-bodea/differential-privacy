@@ -42,106 +42,108 @@ def get_vocab_SST2_cached(data_dir, tokenizer, tokenizer_type="word", cache_path
             pickle.dump((vocab, words, sensitive_words, sensitive_words2id), f)
         return vocab, words, sensitive_words, sensitive_words2id
 
+class SanTextBatchProcessor:
+    def __init__(self,
+                 glove_path="data/glove.840B.300d.txt",
+                 filtered_glove_path="data/glove.filtered.txt",
+                 data_dir="data/SST-2/",
+                 epsilon=15.0,
+                 p=0.2,
+                 sensitive_word_percentage=0.5,
+                 vocab_cache_path="vocab_cache.pkl",
+                 glove_cache_path="glove_filtered_cache.pkl"):
+        self.epsilon = epsilon
+        self.p = p
+        self.sensitive_word_percentage = sensitive_word_percentage
+        self.tokenizer = English()
+        self.vocab, self.words, self.sensitive_words, self.sensitive_words2id = get_vocab_SST2_cached(
+            data_dir, self.tokenizer, tokenizer_type="word", cache_path=vocab_cache_path)
+        if os.path.exists(filtered_glove_path):
+            used_glove_path = filtered_glove_path
+        else:
+            used_glove_path = glove_path
+        if os.path.exists(glove_cache_path):
+            with open(glove_cache_path, "rb") as f:
+                self.word2id, self.sword2id, self.id2sword, self.all_word_embed, self.sensitive_word_embed, self.all_words = pickle.load(f)
+        else:
+            word2id = {}
+            sword2id = {}
+            id2sword = {}
+            all_word_embed = []
+            sensitive_word_embed = []
+            all_words = []
+            sensitive_count = 0
+            all_count = 0
+            with open(used_glove_path) as f:
+                for row in tqdm(f, desc="GloVe"):
+                    content = row.rstrip().split(' ')
+                    cur_word = word_normalize(content[0])
+                    if cur_word in self.vocab and cur_word not in word2id:
+                        word2id[cur_word] = all_count
+                        all_words.append(cur_word)
+                        all_count += 1
+                        emb = [float(i) for i in content[1:]]
+                        all_word_embed.append(emb)
+                        if cur_word in self.sensitive_words2id:
+                            sword2id[cur_word] = sensitive_count
+                            id2sword[sensitive_count] = cur_word
+                            sensitive_count += 1
+                            sensitive_word_embed.append(emb)
+            all_word_embed = np.array(all_word_embed, dtype='f')
+            sensitive_word_embed = np.array(sensitive_word_embed, dtype='f')
+            with open(glove_cache_path, "wb") as f:
+                pickle.dump((word2id, sword2id, id2sword, all_word_embed, sensitive_word_embed, all_words), f)
+            self.word2id = word2id
+            self.sword2id = sword2id
+            self.id2sword = id2sword
+            self.all_word_embed = all_word_embed
+            self.sensitive_word_embed = sensitive_word_embed
+            self.all_words = all_words
+        self.prob_matrix = cal_probability(self.all_word_embed, self.sensitive_word_embed, epsilon=self.epsilon)
+
+    def sanitize(self, sentence, method="SanText"):
+        doc = [token.text for token in self.tokenizer(sentence)]
+        if method == "SanText":
+            doc_indices = [self.word2id[token] for token in doc if token in self.word2id]
+            SanText_init(self.prob_matrix)
+            sanitized_indices = SanText(doc_indices)
+            sanitized_words = [self.all_words[idx] for idx in sanitized_indices]
+            sanitized_sentence = " ".join(sanitized_words)
+            return sanitized_sentence
+        elif method == "SanText+":
+            SanText_plus_init(self.prob_matrix, self.word2id, self.sword2id, self.all_words, self.p, self.tokenizer)
+            sanitized_plus = SanText_plus(doc)
+            return sanitized_plus
+        else:
+            raise ValueError("method must be either 'SanText' or 'SanText+'")
+
 # --- Main script ---
 if __name__ == "__main__":
-    # Parameters
-    glove_path = "data/glove.840B.300d.txt"
-    filtered_glove_path = "data/glove.filtered.txt"
-    data_dir = "data/SST-2/"
-    epsilon = 15.0
-    p = 0.2
-    sensitive_word_percentage = 0.5
-    example_sentence = "The movie was absolutely wonderful and inspiring."
-    vocab_cache_path = "vocab_cache.pkl"
-
-    # Tokenizer
-    tokenizer = English()
-    # Build or load vocab from SST-2
-    vocab, words, sensitive_words, sensitive_words2id = get_vocab_SST2_cached(data_dir, tokenizer, tokenizer_type="word", cache_path=vocab_cache_path)
-    vocab_set = set(vocab.keys())
-
-    # Use filtered GloVe if available
-    if os.path.exists(filtered_glove_path):
-        used_glove_path = filtered_glove_path
-        print(f"Using filtered GloVe file: {filtered_glove_path}")
-    else:
-        used_glove_path = glove_path
-        print(f"Using full GloVe file: {glove_path}")
-
-    # --- GloVe Embedding Caching ---
-    glove_cache_path = "glove_filtered_cache.pkl"
-    if os.path.exists(glove_cache_path):
-        print(f"Loading filtered GloVe from cache: {glove_cache_path}")
-        with open(glove_cache_path, "rb") as f:
-            word2id, sword2id, id2sword, all_word_embed, sensitive_word_embed, all_words = pickle.load(f)
-    else:
-        # Load GloVe embeddings for vocab
-        print("Loading GloVe embeddings...")
-        word2id = {}
-        sword2id = {}
-        id2sword = {}
-        all_word_embed = []
-        sensitive_word_embed = []
-        all_words = []
-        sensitive_count = 0
-        all_count = 0
-        with open(used_glove_path) as f:
-            for row in tqdm(f, desc="GloVe"):
-                content = row.rstrip().split(' ')
-                cur_word = word_normalize(content[0])
-                if cur_word in vocab and cur_word not in word2id:
-                    word2id[cur_word] = all_count
-                    all_words.append(cur_word)
-                    all_count += 1
-                    emb = [float(i) for i in content[1:]]
-                    all_word_embed.append(emb)
-                    if cur_word in sensitive_words2id:
-                        sword2id[cur_word] = sensitive_count
-                        id2sword[sensitive_count] = cur_word
-                        sensitive_count += 1
-                        sensitive_word_embed.append(emb)
-        all_word_embed = np.array(all_word_embed, dtype='f')
-        sensitive_word_embed = np.array(sensitive_word_embed, dtype='f')
-        # Save to cache
-        with open(glove_cache_path, "wb") as f:
-            pickle.dump((word2id, sword2id, id2sword, all_word_embed, sensitive_word_embed, all_words), f)
-
-    # Probability matrix
-    print("Calculating probability matrix...")
-    prob_matrix = cal_probability(all_word_embed, sensitive_word_embed, epsilon=epsilon)
-
-    # Tokenize example sentence
-    doc = [token.text for token in tokenizer(example_sentence)]
-    print(f"Original: {example_sentence}")
-    print(f"Tokenized: {doc}")
-
-    # Map tokens to indices (skip OOV for SanText)
-    doc_indices = [word2id[token] for token in doc if token in word2id]
-
-    # Initialize global prob_matrix for SanText
-    SanText_init(prob_matrix)
-
-    # SanText
-    start_time = time.time()
-    sanitized_indices = SanText(doc_indices)
-    stext_time = time.time() - start_time
-    sanitized_words = [all_words[idx] for idx in sanitized_indices]
-    print("SanText output:", " ".join(sanitized_words))
-
-    # Initialize global variables for SanText_plus
-    SanText_plus_init(prob_matrix, word2id, sword2id, all_words, p, tokenizer)
-
-    # SanText+
-    start_time = time.time()
-    sanitized_plus = SanText_plus(doc)
-    stext_plus_time = time.time() - start_time
-    print("SanText+ output:", sanitized_plus)
-
-    # Print performance comparison table
-    table = [
-        ["SanText", f"{stext_time:.6f}"],
-        ["SanText+", f"{stext_plus_time:.6f}"]
+    example_sentences = [
+        "The movie was absolutely wonderful and inspiring.",
+        "I did not enjoy the film at all.",
+        "The plot was predictable but the acting was great."
     ]
-    headers = ["Method", "Total Time (s)"]
-    print("\nPerformance Comparison Table:")
-    print(tabulate(table, headers=headers, tablefmt="grid")) 
+    processor = SanTextBatchProcessor()
+    for method in ["SanText", "SanText+"]:
+        print(f"\nMethod: {method} (Serial Processing)")
+        start_time = time.time()
+        results = [processor.sanitize(sent, method=method) for sent in example_sentences]
+        elapsed = time.time() - start_time
+        for sent, sanitized in zip(example_sentences, results):
+            print(f"Original: {sent}")
+            print(f"Sanitized: {sanitized}\n")
+        print(f"Total time for {len(example_sentences)} sentences (serial): {elapsed:.6f} seconds\n")
+
+    # Parallel processing example
+    import concurrent.futures
+    for method in ["SanText", "SanText+"]:
+        print(f"\nMethod: {method} (Parallel Processing)")
+        start_time = time.time()
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            results = list(executor.map(lambda sent: processor.sanitize(sent, method=method), example_sentences))
+        elapsed = time.time() - start_time
+        for sent, sanitized in zip(example_sentences, results):
+            print(f"Original: {sent}")
+            print(f"Sanitized: {sanitized}\n")
+        print(f"Total time for {len(example_sentences)} sentences (parallel): {elapsed:.6f} seconds\n") 
