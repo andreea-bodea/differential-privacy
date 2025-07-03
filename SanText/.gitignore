@@ -1,0 +1,10 @@
+data/QNLI/
+data/SST-2/
+data/glove.840B.300d.txt
+data/glove.840B.300d.zip
+data/QNLI.zip
+data/SST-2.zip
+data/wikitext-2.zip
+output_SanText_glove/
+output_SanText_plus_glove/
+glove_filtered_cache.pkl 

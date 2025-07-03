@@ -1,15 +1,4 @@
 .DSP_Store
-SanText/data/QNLI/
-SanText/data/SST-2/
-SanText/data/glove.840B.300d.txt
-SanText/data/glove.840B.300d.zip
-SanText/data/QNLI.zip
-SanText/data/SST-2.zip
-SanText/data/wikitext-2.zip
-SanText/output_SanText_glove/
-SanText/output_SanText_plus_glove/
-SanText/glove_filtered_cache.pkl
-
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
