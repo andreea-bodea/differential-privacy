@@ -6,7 +6,7 @@ import unicodedata
 import os
 import pickle
 # Import core logic from SanText.py
-from .SanText import cal_probability, SanText, SanText_plus, SanText_init, SanText_plus_init
+from SanText import cal_probability, SanText, SanText_plus, SanText_init, SanText_plus_init
 from tabulate import tabulate
 import time
 
@@ -44,9 +44,9 @@ def get_vocab_SST2_cached(data_dir, tokenizer, tokenizer_type="word", cache_path
 
 class SanTextBatchProcessor:
     def __init__(self,
-                 glove_path="SanText/data/glove.840B.300d.txt",
-                 filtered_glove_path="SanText/data/glove.filtered.txt",
-                 data_dir="SanText/data/SST-2/",
+                 glove_path="data/glove.840B.300d.txt",
+                 filtered_glove_path="data/glove.filtered.txt",
+                 data_dir="data/SST-2/",
                  epsilon=15.0,
                  p=0.2,
                  sensitive_word_percentage=0.5,
@@ -101,27 +101,15 @@ class SanTextBatchProcessor:
             self.all_words = all_words
         self.prob_matrix = cal_probability(self.all_word_embed, self.sensitive_word_embed, epsilon=self.epsilon)
 
-    def sanitize(self, sentence, method="SanText", epsilons=None):
+    def sanitize(self, sentence, method="SanText"):
         doc = [token.text for token in self.tokenizer(sentence)]
         if method == "SanText":
             doc_indices = [self.word2id[token] for token in doc if token in self.word2id]
-            # Per-word epsilon support
-            if epsilons is not None:
-                sanitized_words = []
-                for idx, word_idx in enumerate(doc_indices):
-                    epsilon = epsilons[idx] if idx < len(epsilons) else self.epsilon
-                    prob_matrix = cal_probability(self.all_word_embed, self.sensitive_word_embed, epsilon=epsilon)
-                    SanText_init(prob_matrix)
-                    sanitized_index = SanText([word_idx])
-                    sanitized_words.append(self.all_words[sanitized_index[0]])
-                sanitized_sentence = " ".join(sanitized_words)
-                return sanitized_sentence
-            else:
-                SanText_init(self.prob_matrix)
-                sanitized_indices = SanText(doc_indices)
-                sanitized_words = [self.all_words[idx] for idx in sanitized_indices]
-                sanitized_sentence = " ".join(sanitized_words)
-                return sanitized_sentence
+            SanText_init(self.prob_matrix)
+            sanitized_indices = SanText(doc_indices)
+            sanitized_words = [self.all_words[idx] for idx in sanitized_indices]
+            sanitized_sentence = " ".join(sanitized_words)
+            return sanitized_sentence
         elif method == "SanText+":
             SanText_plus_init(self.prob_matrix, self.word2id, self.sword2id, self.all_words, self.p, self.tokenizer)
             sanitized_plus = SanText_plus(doc)
@@ -133,57 +121,27 @@ class SanTextBatchProcessor:
 if __name__ == "__main__":
     example_sentences = [
         "The movie was absolutely wonderful and inspiring.",
-        #"I did not enjoy the film at all.",
+        "I did not enjoy the film at all.",
         "The plot was predictable but the acting was great."
     ]
     processor = SanTextBatchProcessor()
-    # Example: per-word epsilon for the first sentence
-    per_word_epsilons = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]  # Should match number of tokens in the sentence
-    print("\nSanText with per-word epsilon (first sentence) - epsilon: ", per_word_epsilons)
-    sanitized = processor.sanitize(example_sentences[0], method="SanText", epsilons=per_word_epsilons)
-    print(f"Original: {example_sentences[0]}")
-    print(f"Sanitized: {sanitized}\n")
-    # Standard batch processing for all sentences
     for method in ["SanText", "SanText+"]:
         print(f"\nMethod: {method} (Serial Processing)")
         start_time = time.time()
-        if method == "SanText":
-            # Example: per-word epsilons for each sentence
-            epsilons_list = [
-                [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],  # for first sentence
-                [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],         # for second sentence
-                [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]     # for third sentence
-            ]
-            results = [processor.sanitize(sent, method=method, epsilons=eps) for sent, eps in zip(example_sentences, epsilons_list)]
-        else:
-            results = [processor.sanitize(sent, method=method) for sent in example_sentences]
+        results = [processor.sanitize(sent, method=method) for sent in example_sentences]
         elapsed = time.time() - start_time
         for sent, sanitized in zip(example_sentences, results):
             print(f"Original: {sent}")
             print(f"Sanitized: {sanitized}\n")
         print(f"Total time for {len(example_sentences)} sentences (serial): {elapsed:.6f} seconds\n")
 
-    # Parallel processing example with per-word epsilons for SanText
+    # Parallel processing example
     import concurrent.futures
-    import multiprocessing
     for method in ["SanText", "SanText+"]:
         print(f"\nMethod: {method} (Parallel Processing)")
         start_time = time.time()
-        if method == "SanText":
-            epsilons_list = [
-                [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
-                [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
-                [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0]
-            ]
-            def sanitize_with_eps_mp(args):
-                sentence, epsilons = args
-                proc = SanTextBatchProcessor()  # Each process gets its own instance
-                return proc.sanitize(sentence, method="SanText", epsilons=epsilons)
-            with multiprocessing.Pool(processes=4) as pool:
-                results = pool.map(sanitize_with_eps_mp, zip(example_sentences, epsilons_list))
-        else:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-                results = list(executor.map(lambda sent: processor.sanitize(sent, method=method), example_sentences))
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            results = list(executor.map(lambda sent: processor.sanitize(sent, method=method), example_sentences))
         elapsed = time.time() - start_time
         for sent, sanitized in zip(example_sentences, results):
             print(f"Original: {sent}")
